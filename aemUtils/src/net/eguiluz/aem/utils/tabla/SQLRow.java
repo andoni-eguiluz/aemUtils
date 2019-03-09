@@ -35,8 +35,8 @@ public class SQLRow implements ConvertibleEnTabla {
 	}
 	
 	public String get( int numCab ) {
-		if (numCab<0 || numCab>=datos.size()) return datos.get(numCab);
-		else return null;
+		if (numCab<0 || numCab>=datos.size()) return null;
+		else return datos.get(numCab);
 	}
 	
 	public int size() { return cabs.size(); }

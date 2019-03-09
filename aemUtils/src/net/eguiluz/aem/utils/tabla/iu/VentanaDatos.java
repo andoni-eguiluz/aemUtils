@@ -11,6 +11,7 @@ import javax.swing.table.TableCellRenderer;
 import javax.swing.table.TableColumnModel;
 
 import net.eguiluz.aem.utils.VentanaEdicionGenericaConfig;
+import net.eguiluz.aem.utils.tabla.ConvertibleEnTabla;
 import net.eguiluz.aem.utils.tabla.Tabla;
 
 /** Clase de ventana para muestra de datos de cualquier tabla {@link Tabla}
@@ -28,6 +29,7 @@ public class VentanaDatos extends JInternalFrame {
 	private String tipo;  // Tipo de la ventana (usado para la configuración de la misma)
 
 	private EventoEnCelda dobleClick;
+	private EventoEnCelda dobleClickHeader;
 	private EventoEnCelda enter;
 	
 	/** Añade un botón a la ventana
@@ -50,7 +52,7 @@ public class VentanaDatos extends JInternalFrame {
 	public JTable getJTable() { return tDatos; }
 	
 	public VentanaGeneral getVentMadre() { return ventMadre; }
-	
+
 	/** Crea una nueva ventana con posición
 	 */
 	public VentanaDatos( VentanaGeneral ventMadre, String tipo, String titulo, int posX, int posY ) {
@@ -97,6 +99,15 @@ public class VentanaDatos extends JInternalFrame {
 				if (fila>=0 && columna>=0) {
 					Object valor = tDatos.getValueAt( fila, columna );
 					if (valor!=null && ventMadre!=null) ventMadre.setMensajeSinCambioColor( valor.toString() );
+				}
+			}
+		});
+		tDatos.getTableHeader().addMouseListener( new MouseAdapter() {
+			@Override
+			public void mouseClicked(MouseEvent e) {
+				if (e.getClickCount()>=2) {
+					int columna = tDatos.columnAtPoint( e.getPoint() );
+					if (dobleClickHeader!=null) dobleClickHeader.evento( -1, columna );
 				}
 			}
 		});
@@ -309,6 +320,24 @@ public class VentanaDatos extends JInternalFrame {
 		});
 		*/
 	}
+	
+	/** Crea una nueva ventana partiendo de una lista de datos. Crea también la tabla asociada a esa lista de datos (recuperable con {@link #getTabla()}
+	 * @param ventMadre	Ventana principal
+	 * @param listaDatos	Lista de datos de la que crear la tabla
+	 * @param tipo	Tipo nominal de la ventana/tabla
+	 * @param titulo	Título de la ventana
+	 * @param posX	Posición x en la ventana principal
+	 * @param posY	Posición y en la ventana principal
+	 * @return	Ventana creada
+	 */
+	public static VentanaDatos crearVentanaYTabla( VentanaGeneral ventMadre, ArrayList<? extends ConvertibleEnTabla> listaDatos, String tipo, String titulo, int posX, int posY ) {
+		VentanaDatos ret = new VentanaDatos( ventMadre, tipo, titulo );
+		if (ret.getX()==0 && ret.getY()==0) ret.setLocation( posX, posY );
+		ventMadre.addVentanaInterna( ret, tipo );
+		ret.setTabla( Tabla.linkTablaToList( listaDatos ) );
+		return ret;
+	}
+	
 
 		private transient VentanaEdicionGenericaConfig vConfig;
 		
@@ -416,6 +445,10 @@ public class VentanaDatos extends JInternalFrame {
 	
 	public void setDobleClickCelda( EventoEnCelda evento ) {
 		dobleClick = evento;
+	}
+	
+	public void setDobleClickHeader( EventoEnCelda evento ) {
+		dobleClickHeader = evento;
 	}
 	
 	public void setEnterCelda( EventoEnCelda evento ) {
