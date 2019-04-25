@@ -1,6 +1,9 @@
 package net.eguiluz.aem.utils.tabla;
 
 import java.awt.BorderLayout;
+import java.awt.Color;
+import java.awt.Toolkit;
+import java.awt.datatransfer.StringSelection;
 import java.awt.event.KeyAdapter;
 import java.awt.event.KeyEvent;
 import java.sql.Connection;
@@ -108,6 +111,7 @@ public class EdicionRapidaTabla {
 			ventanaTabla.addBoton( "Borrar fila sel", new Threadable() { @Override public void run() { borrarFilaSel(); } });
 			ventanaTabla.addBoton( "Insertar grupos de datos", new Threadable() { @Override public void run() { introduccionDatosConTabs(); } });
 			ventanaTabla.addBoton( "Conteo por columna", new Threadable() { @Override public void run() { contarPorColumna(); } });
+			ventanaTabla.addBoton( "Copy clipboard", new Threadable() { @Override public void run() { copiarAClipboard(); } });
 			ventanaTabla.getJTable().addKeyListener( new KeyAdapter() {
 				@Override
 				public void keyReleased(KeyEvent e) {
@@ -243,6 +247,24 @@ public class EdicionRapidaTabla {
 			}
 			
 		}
+		
+	private static void copiarAClipboard() {
+		StringBuffer texto = new StringBuffer();
+		for (int col=0; col<tabla.getWidth(); col++) texto.append( tabla.getHeader( col ) + "\t" );
+		for (int fila=0; fila<tabla.size(); fila++) {
+			ventanaTabla.setMensaje( "Copiando contenido a portapapeles... " + (fila+1) + " de " + tabla.size(), Color.yellow );
+			texto.append( "\n" );
+			for (int col=0; col<tabla.getWidth(); col++) {
+				if (tabla.getType(col) == Double.class) {
+					texto.append( tabla.get( fila, col ).replaceAll("\\.",",") + "\t" );
+				} else {
+					texto.append( tabla.get( fila, col ) + "\t" );
+				}
+			}
+		}
+		Toolkit.getDefaultToolkit().getSystemClipboard().setContents( new StringSelection(texto.toString()),null);				
+		ventanaTabla.setMensaje( "Contenido de tabla copiado al portapapeles." );
+	}
 
 		private static final String MARCA_SEP_CLAVE = "]+[";
 	// Si listaNuevas != null chequea también la lista además de las ya existentes

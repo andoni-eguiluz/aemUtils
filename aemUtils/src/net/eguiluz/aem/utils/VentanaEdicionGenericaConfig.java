@@ -252,6 +252,15 @@ public class VentanaEdicionGenericaConfig  extends JDialog {
 		return misProps.getProperty( propName.toString() );
 	}
 	
+	/** Cambia el valor de la propiedad indicada. Funciona como una llamada a setProperty sobre getProps().
+	 * @param propName	Enumerado con el nombre de la propiedad que se quiere modificar
+	 * @param valor	Valor a poner
+	 */
+	public void setProp( Enum<?> propName, String valor ) {
+		if (misProps == null) initProps();
+		misProps.setProperty( propName.toString(), valor );
+	}
+	
 	/** Devuelve el valor de la propiedad indicada como un entero. Funciona como una llamada a getProperty sobre getProps().
 	 * @param propName	Nombre de la propiedad que se busca
 	 * @param def	Valor por defecto que se devuelve en lugar de -1, si se indica, cuando el la propiedad no existe o no es un entero correcto
