@@ -6,6 +6,8 @@ import java.io.*;
 import java.net.*;
 import java.text.*;
 import java.util.*;
+import java.util.function.Predicate;
+
 import javax.swing.event.TableModelEvent;
 import javax.swing.event.TableModelListener;
 import javax.swing.table.TableModel;
@@ -30,6 +32,8 @@ public class Tabla {
 	public static SimpleDateFormat sdfDMY = new SimpleDateFormat( "dd/MM/yyyy" );
 	public static SimpleDateFormat sdfDM = new SimpleDateFormat( "dd/MM" );
 
+	private static boolean LOG_CONSOLE_CSV = false;  // Log en consola del csv	
+	
 	// =================================================
 	// Métodos
 
@@ -46,6 +50,70 @@ public class Tabla {
 	public Tabla( ArrayList<String> headers ) {
 		this.headers = headers;
 		data = new ArrayList<>();
+	}
+	
+	/** Crea una tabla copia exacta de otra
+	 * @param tabla	Tabla origen que se copia
+	 */
+	public Tabla( Tabla tabla ) {
+		headers = new ArrayList<>( tabla.headers );
+		types = new ArrayList<>( tabla.types );
+		if (tabla.data!=null) {
+			data = new ArrayList<>();
+			for (ArrayList<String> l : tabla.data) {
+				data.add( new ArrayList<String>( l ) );
+			}
+		} else {
+			listaDatos = tabla.listaDatos;
+		}
+	}
+	
+	/** Filtra los datos de una tabla quitando los que no cumplan una condición
+	 * @param col	Columna de consulta de la tabla
+	 * @param condMantener	Expresión lógica que debe cumplir el valor del campo para que se MANTENGA
+	 * @return	Número de filas quitadas
+	 */
+	public int filtraTablaString( int col, Predicate<String> condMantener ) {
+		int borrados = 0;
+		for (int fila=size()-1; fila>=0; fila--) {
+			String val = get( fila, col );
+			if (!condMantener.test( val )) {
+				removeRow( fila );
+				borrados++;
+			}
+		}
+		return borrados;
+	}
+	
+	/** Ordena los datos de una tabla de acuerdo al valor alfabético de una columna
+	 * @param col	Columna de ordenación de la tabla
+	 */
+	public void ordenaTablaString( int col ) {
+		if (data!=null) { // Ordena data
+			data.sort( new Comparator<ArrayList<String>>() {
+				@Override
+				public int compare(ArrayList<String> o1, ArrayList<String> o2) {
+					String s1 = o1.get(col);
+					String s2 = o2.get(col);
+					if (s1==null && s2==null) return 0;
+					if (s1==null) return -1;
+					if (s2==null) return +1;
+					return s1.compareTo(s2);
+				}
+			});
+		} else { // Ordena listaDatos
+			Collections.sort( listaDatos, new Comparator<ConvertibleEnTabla>() {
+				@Override
+				public int compare(ConvertibleEnTabla o1, ConvertibleEnTabla o2) {
+					String s1 = o1.getValorColumna( col );
+					String s2 = o2.getValorColumna( col );
+					if (s1==null && s2==null) return 0;
+					if (s1==null) return -1;
+					if (s2==null) return +1;
+					return s1.compareTo(s2);
+				}
+			});
+		}
 	}
 	
 	/** Devuelve la fila donde se encuentra el primer código buscado 
@@ -190,6 +258,31 @@ public class Tabla {
 			data.remove( row );
 		}
 	}
+
+	/** Crea una nueva tabla solo con las columnas indicadas
+	 * @param nomCol	Nombres de columnas a mantener de la tabla
+	 * @return	Nueva tabla solo con las columnas indicadas, con las mismas filas y valores que la tabla original
+	 */
+	public Tabla crearTablaConCols( String... nomCol ) {
+		ArrayList<Integer> colsADejar = new ArrayList<>();
+		for (int i=0;i<getWidth();i++) {
+			if (Arrays.asList(nomCol).contains( getHeader(i) )) {  // Añade las columnas cuyo nombre se ha indicado
+				colsADejar.add( i );
+			}
+		}
+		Tabla ret = new Tabla();
+		for (int i : colsADejar) {  // Recorre solo las columnas cuyo nombre se ha indicado
+			ret.addColumn( getHeader(i), "" );
+		}
+		for (int j=0; j<size(); j++) {
+			ArrayList<String> linea = new ArrayList<String>();
+			for (int i : colsADejar) {
+				linea.add( get( j, getHeader(i) ) );
+			}
+			ret.addDataLine( linea );
+		}
+		return ret;
+	}
 	
 	/** Devuelve un valor de dato de la tabla
 	 * @param row	Número de fila
@@ -199,6 +292,16 @@ public class Tabla {
 	public String get( int row, int col ) {
 		if (data==null) return listaDatos.get(row).getValorColumna(col);
 		return data.get( row ).get( col );
+	}
+	
+	/** Devuelve un valor de dato de la tabla
+	 * @param row	Número de fila
+	 * @param ncol	Nombre exacto de columna
+	 * @return	Dato de ese valor
+	 */
+	public String get( int row, String ncol ) {
+		int col = getColumnWithHeader( ncol, true );
+		return get( row, col );
 	}
 	
 	/** Devuelve un valor de dato de la tabla en forma de entero
@@ -215,6 +318,16 @@ public class Tabla {
 		}
 	}
 	
+	/** Devuelve un valor de dato de la tabla en forma de entero
+	 * @param row	Número de fila
+	 * @param ncol	Nombre exacto de columna
+	 * @return	Dato de ese valor, -1 si es un entero incorrecto
+	 */
+	public int getInt( int row, String ncol ) {
+		int col = getColumnWithHeader( ncol, true );
+		return getInt( row, col );
+	}
+	
 	/** Devuelve un valor de dato de la tabla en forma de doble
 	 * @param row	Número de fila
 	 * @param col	Número de columna
@@ -227,6 +340,16 @@ public class Tabla {
 		} catch (Exception e) {
 			return Double.NaN;
 		}
+	}
+	
+	/** Devuelve un valor de dato de la tabla en forma de doble
+	 * @param row	Número de fila
+	 * @param ncol	Nombre exacto de columna
+	 * @return	Dato de ese valor, NaN si es un doble incorrecto
+	 */
+	public double getDouble( int row, String ncol ) {
+		int col = getColumnWithHeader( ncol, true );
+		return getDouble( row, col );
 	}
 	
 	/** Devuelve un valor de dato de la tabla en forma de fecha dd/mm/aaaa
@@ -247,6 +370,16 @@ public class Tabla {
 		}
 	}
 	
+	/** Devuelve un valor de dato de la tabla en forma de fecha dd/mm/aaaa
+	 * @param row	Número de fila
+	 * @param ncol	Nombre exacto de columna
+	 * @return	Dato de ese valor, null si es una fecha incorrecta
+	 */
+	public Date getDate( int row, String ncol ) {
+		int col = getColumnWithHeader( ncol, true );
+		return getDate( row, col );
+	}
+	
 	/** Modifica un valor de dato de la tabla
 	 * @param row	Número de fila
 	 * @param col	Número de columna
@@ -256,6 +389,16 @@ public class Tabla {
 		if (data==null) listaDatos.get(row).setValorColumna( col, value );
 		else data.get( row ).set( col, value );
 		cambioEnTabla( row, col, row, col );
+	}
+	
+	/** Modifica un valor de dato de la tabla
+	 * @param row	Número de fila
+	 * @param ncol	Nombre exacto de columna
+	 * @param value	Valor a modificar en esa posición
+	 */
+	public void set( int row, String ncol, String value ) {
+		int col = getColumnWithHeader( ncol, true );
+		set( row, col, value );
 	}
 	
 	/** Devuelve una fila completa de la tabla
@@ -548,8 +691,6 @@ public class Tabla {
 		data = null;
 	}
 
-		private static boolean LOG_CONSOLE_CSV = false;  // Log en consola del csv
-		
 		
 	// Carga de tabla desde base de datos
 	
@@ -566,7 +707,8 @@ public class Tabla {
 		Tabla tabla = processCSV( file.toURI().toURL() );
 		return tabla;
 	}
-	
+
+		private static Character SEPARADOR = null;
 	/** Procesa un fichero csv (codificado UTF-8) y lo carga devolviéndolo en una nueva tabla
 	 * @param urlCompleta	URL del csv
 	 * @param lineaCabs	Por defecto es 1 (número de línea que incluye las cabeceras) pero si es otra se puede indicar (>= 1)
@@ -584,6 +726,7 @@ public class Tabla {
 	 FileNotFoundException, // En algunos servidores, acceso a página inexistente
 	 ConnectException // Error de timeout
 	{
+		SEPARADOR = null;
 		int linCab = 1;
 		if (lineaCabs.length>0) linCab = lineaCabs[0];
 		Tabla table = new Tabla();
@@ -597,6 +740,7 @@ public class Tabla {
 		    String line = "";
 		    int numLine = 0;
 		    while ((line = input.readLine()) != null) {
+		    	if (SEPARADOR==null) infiereSeparador( line );
 		    	numLine++;
 		    	if (LOG_CONSOLE_CSV) System.out.println( numLine + "\t" + line );
 		    	try {
@@ -628,6 +772,16 @@ public class Tabla {
 	    return table;
 	}
 	
+		private static void infiereSeparador( String line ) {
+			SEPARADOR = Character.MAX_VALUE;
+			int numComas = line.length() - line.replaceAll(",", "").length();
+			int numPuntoComas = line.length() - line.replaceAll(";", "").length();
+			int numDolares = line.length() - line.replaceAll("\\$", "").length();
+			if (numComas>numPuntoComas && numComas>numDolares && numComas>5) SEPARADOR = ',';
+			else if (numPuntoComas>numComas && numPuntoComas>numDolares && numPuntoComas>5) SEPARADOR = ';';
+			else if (numDolares>numComas && numDolares>numPuntoComas && numDolares>5) SEPARADOR = '$';
+		}
+	
 	
 	/** Genera un fichero csv (codificado UTF-8) partiendo de los datos actuales de la tabla
 	 * @param file	Fichero de salida
@@ -638,6 +792,10 @@ public class Tabla {
 	public void generarCSV( File file, String[] cabeceras, GenerarLineaCSV... genLin ) 
 	throws IOException // Error de E/S
 	{
+		if (cabeceras==null) {
+			cabeceras = new String[ headers.size() ];
+			for (int i=0; i<headers.size(); i++) cabeceras[i] = headers.get(i);
+		}
 		PrintStream ps = new PrintStream( file, "UTF-8" );
 		for (int i=0; i<cabeceras.length-1; i++) {
 			ps.print( cabeceras[i] + ";" );
@@ -649,13 +807,22 @@ public class Tabla {
 				ps.println( linea );
 			} else {
 				for (int col=0; col<getWidth()-1; col++) {
-					ps.print( get( lin, col ) + ";" );
+					ps.print( quitaPC(get( lin, col )) + ";" );
 				}
-				ps.println( get( lin, getWidth()-1 ) );
+				ps.println( quitaPC(get( lin, getWidth()-1 )) );
 			}
 		}
 		ps.close();
 	}
+	
+		private String quitaPC( String st ) {
+			if (st.contains(";")) {
+				return "\"" + st.replaceAll( "\"", "\'" ) + "\"";
+			} else {
+				return st.replaceAll( "\"", "\'" );
+			}
+		}
+	
 		public static interface GenerarLineaCSV { public String generaLinea( ConvertibleEnTabla dato ); }
 	
 	
@@ -785,7 +952,7 @@ public class Tabla {
 								throw new StringIndexOutOfBoundsException( "\" after data in char " + posCar + " of line [" + line + "]" );
 							}
 						}
-					} else if (car==',' || car==';') {
+					} else if ((SEPARADOR!=Character.MAX_VALUE && car==SEPARADOR) || (SEPARADOR==Character.MAX_VALUE && car==',' || car==';')) {
 						if (inString) {  // separador dentro de string
 							stringActual += car;
 						} else {  // separador que separa valores

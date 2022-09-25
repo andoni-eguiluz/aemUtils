@@ -2,6 +2,7 @@ package net.eguiluz.aem.utils.tabla.iu;
 
 import java.awt.BorderLayout;
 import java.awt.Color;
+import java.awt.Component;
 import java.awt.event.*;
 import java.util.ArrayList;
 
@@ -68,6 +69,28 @@ public class VentanaGeneral extends JFrame {
 		f.setName( codVentana );
 	}
 	
+	public void removeVentanaInterna( JInternalFrame f, String codVentana ) {
+		desktop.remove( f );
+		for (Component c : menuVentanas.getMenuComponents()) {
+			JMenuItem mi = (JMenuItem) c;
+			if (mi.getActionCommand().equals( codVentana )) {
+				menuVentanas.remove( mi );
+				break;
+			}
+		}
+		misSubventanas.remove( f );
+	}
+	
+	/** Borra todas las ventanas internas
+	 */
+	public void removeAll() {
+		menuVentanas.removeAll();
+		for (JInternalFrame jif : misSubventanas) {
+			desktop.remove( jif );
+		}
+		misSubventanas.clear();
+	}
+	
 	public void setMensaje( String mens, Color... colorFondo ) {
 		Color fondo = (colorFondo.length>0) ? colorFondo[0] : COLOR_GRIS_CLARITO; 
 		if (mens==null || mens.isEmpty()) mens = " ";
@@ -89,6 +112,10 @@ public class VentanaGeneral extends JFrame {
 	
 	public ArrayList<JInternalFrame> getSubventanas() {
 		return misSubventanas;
+	}
+	
+	public JDesktopPane getJDesktopPane() {
+		return desktop;
 	}
 	
 }

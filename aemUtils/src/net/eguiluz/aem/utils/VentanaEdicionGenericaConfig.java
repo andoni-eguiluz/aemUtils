@@ -188,6 +188,7 @@ public class VentanaEdicionGenericaConfig  extends JDialog {
 	 * @return	true si se ha cerrado con el botón "Confirmar", false si se ha cancelado o cerrado la ventana
 	 */
 	public boolean mostrar() {
+		refrescaPropsVentana();
 		aceptar = false;
 		setVisible( true );
 		dispose();
