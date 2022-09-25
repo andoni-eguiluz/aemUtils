@@ -33,10 +33,12 @@ public class DirProcessFrame extends JFrame implements TreeSelectionListener, Mo
     private long horaInicio = System.currentTimeMillis();
 
     // Atributos de acción
+    private JButton bPausar = new JButton( "Pausa" );
     private JButton bCerrarCancelar = new JButton( "Cancelar" );
     private JComboBox cbArbolesNoVistos = new JComboBox();
     private JComboBox cbVerOtroArbol = new JComboBox( new String[] { "Ventana 1", "Ventana 2", "Ventana 3", "Ventana 4", "Ventana 5", "Ventana 6" } );
     private JProgressBar pbProgreso = new JProgressBar( SwingConstants.HORIZONTAL, 0, 10000 );
+    private JProgressBar pbProgresoCopia = new JProgressBar( SwingConstants.HORIZONTAL, 0, 10000 );
     private JSplitPane pCentro;
     private JSplitPane pCentro23;
     private JSplitPane pCentro1;
@@ -127,6 +129,10 @@ public class DirProcessFrame extends JFrame implements TreeSelectionListener, Mo
         pbProgreso.setValue( 0 );
         pbProgreso.setStringPainted(true);
         pbProgreso.setPreferredSize( new Dimension( 75, 20 ) );
+        pbProgresoCopia.setValue( 0 );
+        pbProgresoCopia.setStringPainted(true);
+        pbProgresoCopia.setPreferredSize( new Dimension( 75, 20 ) );
+        pbProgresoCopia.setEnabled( false );
         tfIgnoradosOrigen.setEditable( false );
         tfIgnoradosDestino.setEditable( false );
 
@@ -169,12 +175,15 @@ public class DirProcessFrame extends JFrame implements TreeSelectionListener, Mo
                     pNorte2a.add( lProgreso );
                     pNorte2a.add( pbProgreso );
                     pNorte2a.add( lTiempo );
+                    pNorte2a.add( bPausar );
                 pNorte2.add( pNorte2a );
                 JPanel pNorte2b = new JPanel( new FlowLayout( FlowLayout.LEFT ) );
                     pNorte2b.add( new JLabel( "Ignorados en origen:") );
                     pNorte2b.add( tfIgnoradosOrigen );
                     pNorte2b.add( new JLabel( "en destino:") );
                     pNorte2b.add( tfIgnoradosDestino );
+                    pNorte2b.add( new JLabel( " Progreso copia" ) );
+                    pNorte2b.add( pbProgresoCopia );
                 pNorte2.add( pNorte2b );
             pNorte.add( pNorte2, "Center" );
         getContentPane().add( pNorte, "North" );
@@ -229,14 +238,40 @@ public class DirProcessFrame extends JFrame implements TreeSelectionListener, Mo
                         JOptionPane.YES_NO_CANCEL_OPTION, JOptionPane.QUESTION_MESSAGE, null, opciones, opciones[1]);
                     if (respuesta == 2) DirProcess.cancelCopy(); // Cancela sólo la copia de fichero
                     if (respuesta == 0) { // Cancela la sincronización a medias
+    					DirProcess.pausaSync( false );
                         DirProcess.cancelSync();
+                        DirProcess.freeConsole();
                         bCerrarCancelar.setText( "Cerrar" );
                     }
                 } else {   // Estado del botón: cerrar (ventana)
+					DirProcess.pausaSync( false );
+                    DirProcess.freeConsole();
                     dispose();
                 }
             }
         } );
+        bPausar.addActionListener( new ActionListener() {
+			@Override
+			public void actionPerformed(ActionEvent e) {
+				if (bPausar.getText().equals("Pausa")) {
+					bPausar.setText( "Pausando..." );
+					DirProcess.pausaSync( true );
+					(new Thread() {
+						public void run() {
+							while (bPausar.getText().equals("Pausando...")) {
+								try { Thread.sleep( 1000 ); } catch (InterruptedException e) { }
+								if (DirProcess.isPausedSync()) {
+									bPausar.setText( "Continuar" );
+								}
+							}
+						}
+					}).start();
+				} else {
+					DirProcess.pausaSync( false );
+					bPausar.setText( "Pausa" );
+				}
+			}
+		});
         cbVerOtroArbol.addActionListener( new ActionListener() {
             public void actionPerformed(ActionEvent e) {
                 if (cbVerOtroArbol.getSelectedIndex() >= 0 && cbArbolesNoVistos.getSelectedIndex() >= 0) {
@@ -264,7 +299,64 @@ public class DirProcessFrame extends JFrame implements TreeSelectionListener, Mo
             a.addTreeSelectionListener( this );
             a.addMouseListener( this );
         }
+        // Hilo de progreso de copia
+        Thread hiloProgCopia = new Thread() {
+        	public void run() {
+        		while (true) {
+        			try { Thread.sleep( 500 ); } catch (InterruptedException e) { }
+        			muestraProgresoCopia();
+        		}
+        	}
+        };
+        hiloProgCopia.setDaemon( true );
+        hiloProgCopia.start();
     }
+    
+    // Datos y métodos de progreso de copia
+    private long totalTiempoCopia = 0;
+    private long totalBytesCopia = 0;
+    private long timeStampCopia;
+    private long timeStampCopiaActual;
+    private long ultimoTamanyoBytes;
+    
+    /** Informa de inicio de copia de fichero. Activa el progressbar de copia en ficheros por encima de 1 Mb
+     * Si hay varias copias concurrentes solo considera una (la primera que se empiece)
+     * @param tamanyoBytes	Tamaño del fichero que se empieza a copiar
+     */
+    public synchronized void inicioCopia( long tamanyoBytes ) {
+    	if (ultimoTamanyoBytes!=0) return;
+    	ultimoTamanyoBytes = tamanyoBytes;
+    	timeStampCopia = System.currentTimeMillis();
+    	timeStampCopiaActual = System.currentTimeMillis();
+    }
+    
+    /** Informa de fin de copia (del último fichero que se estaba copiando). Desactiva el progressbar de copia si lo estuviera.
+     * @param tamanyoBytes	Tamaño del fichero que se acaba de copiar
+     */
+    public synchronized void finCopia( long tamanyoBytes ) {
+    	if (ultimoTamanyoBytes!=tamanyoBytes) return;
+    	ultimoTamanyoBytes = 0;
+    	totalBytesCopia += tamanyoBytes;
+    	totalTiempoCopia += (System.currentTimeMillis() - timeStampCopia);
+    	pbProgresoCopia.setValue( 0 );
+    	pbProgresoCopia.setEnabled( false );
+    }
+    
+    private synchronized void muestraProgresoCopia() {
+    	if (ultimoTamanyoBytes>0 && totalTiempoCopia>2000) {  // Hasta que no haya estado 2 sgs de copia no lo consideramos suficiente muestra
+    		double MsPorByte = totalTiempoCopia * 1.0 / totalBytesCopia;
+    		double msEsperados = ultimoTamanyoBytes * MsPorByte;
+    		double msTranscurridos = (System.currentTimeMillis() - timeStampCopiaActual);
+    		double porcentajeAproximado = msTranscurridos / msEsperados;
+    		if (porcentajeAproximado>1.0) return;
+    		int porcentajeAproximadoEntero = (int) Math.round( porcentajeAproximado * 10000 );
+    		if (porcentajeAproximadoEntero>0) {
+        		pbProgresoCopia.setEnabled( true );
+        		pbProgresoCopia.setValue( porcentajeAproximadoEntero );
+    		}
+    	}
+    }
+    
 
         private String getFileNameFromPath( TreePath tp ) {
             String ret = "";
@@ -311,13 +403,15 @@ public class DirProcessFrame extends JFrame implements TreeSelectionListener, Mo
                         DefaultMutableTreeNode nodoHijo = (DefaultMutableTreeNode) nodoABorrar.getChildAt(i);
                         if (nodoHijo.isLeaf()) {  // Fichero - borrarlo
                             File f = new File( fileNameDePath + nodoHijo );
-                            if (f.delete()) cont++;
+                            if (DirProcess.deleteFile( f )) {
+                            	cont++;
+                            }
                         } else {  // Carpeta - borrado recursivo
                             cont += borraPathRec( fileNameDePath + nodoHijo + "\\", nodoHijo );
                         }
                     }
                     File dir = new File( fileNameDePath );
-                    dir.delete();  // Sólo borra el directorio si está vacío
+                    DirProcess.deleteSingleDir( dir );  // Sólo borra el directorio si está vacío
                 }
                 return cont;
             }
@@ -361,7 +455,9 @@ public class DirProcessFrame extends JFrame implements TreeSelectionListener, Mo
                                 int ficsBorrados = 0;
                                 if (isFile) {
                                     File f = new File( fileName );
-                                    if (f.delete()) ficsBorrados++;
+                                    if (DirProcess.deleteFile( f )) {
+                                    	ficsBorrados++;
+                                    }
                                 } else {  // Es directorio
                                     respuesta = JOptionPane.showOptionDialog( null, fileName + " es un directorio. Se borrarán sólo los ficheros indicados en este árbol.\n¿Estás seguro de que quieres borrar su contenido?", "Confirmación de borrado de carpeta",
                                         JOptionPane.YES_NO_OPTION, JOptionPane.QUESTION_MESSAGE, null, opcionesBorrado, opcionesBorrado[1]);
@@ -371,11 +467,35 @@ public class DirProcessFrame extends JFrame implements TreeSelectionListener, Mo
                                 }
                                 if (respuesta==0) JOptionPane.showConfirmDialog( null, ficsBorrados + " fichero(s) borrado(s).", "Confirmación de borrado", JOptionPane.DEFAULT_OPTION, JOptionPane.INFORMATION_MESSAGE );
                             }
+                        } else if (e.getActionCommand().equals( "Reintentar" )) {
+                            Object[] path = actionPath.getPath();
+                            DefaultMutableTreeNode ultimoNodo = (DefaultMutableTreeNode) path[path.length-1];
+                            if (ultimoNodo.isLeaf() && ultimoNodo instanceof DefaultMutableTreeNodeCopia) {  // Debería serlo
+                            	String fileNameFuente = ((DefaultMutableTreeNodeCopia)ultimoNodo).ficheroFuente;
+            					System.out.println( "Reintentando copia de fichero " + fileName + "..." );
+                            	if (!fileNameFuente.equals(fileName)) {  // Si son iguales es que no cabe el reintento, si es viable entonces son diferentes
+                            		Thread hiloReintento = new Thread() {
+                            			public void run() {
+                            				try {
+												DirProcess.copyFile( new File(fileNameFuente), new File(fileName) );
+                            					System.out.println( "Reintento de " + fileName + "satisfactorio." );
+												JOptionPane.showMessageDialog( DirProcessFrame.this, "Reintento satisfactorio. Copia realizada\n" + fileNameFuente );
+											} catch (IOException e) {
+                            					System.out.println( "Reintento de " + fileName + "inválido." );
+												JOptionPane.showMessageDialog( DirProcessFrame.this, "Reintento inválido. Copia no realizada.\n" + fileNameFuente + "\nComprueba si hay que desbloquear fichero origen o destino." );
+											}
+                            			}
+                            		};
+                            		hiloReintento.setDaemon( true );
+                            		hiloReintento.start();
+                            	} else {
+                					System.out.println( "Reintento de " + fileName + "inválido. No se puede copiar de " + fileNameFuente );
+                            	}
+                            }
                         // TODO: Faltan el resto de opciones:
                             // Copiar - Hace copia de nuevo de origen a destino [en origen] o de destino a origen [en destino]
                             // Respaldar - Hace copia a respaldo en destino [sólo en destino]
                             // Restaurar - Hace copia de respaldo de borrado a destino [sólo en destino]
-                            // Reintentar - Reintenta operación fallida si hay error [sólo en erróneos]
                         } else {
                             System.out.println( e.getActionCommand() + " -- " + actionPath + " --- " + e.getSource() );
                         }
@@ -421,7 +541,7 @@ public class DirProcessFrame extends JFrame implements TreeSelectionListener, Mo
                                     // Sacar el menú contextual con las opciones activas que correspondan
                                     // Orden de flags:                                               Abrir,Cerrar,   SEP,Borrar,Ejecut,Copiar,   SEP,Respal,Restau,Reintn
                                     switch (tipoA) {
-                                        case DPF_ERRORES_COPIA: {        myTreePopupMenu.setEnabled(  true,  true,  true, false,  true, false,  true, false, false, false ); break; }
+                                        case DPF_ERRORES_COPIA: {        myTreePopupMenu.setEnabled(  true,  true,  true, false,  true, false,  true, false, false, true  ); break; }
                                         case DPF_FICHEROS_GRANDES: {     myTreePopupMenu.setEnabled(  true,  true,  true,  true,  true, false,  true, false, false, false ); break; }
                                         case DPF_IGNORADOS_EN_DESTINO: { myTreePopupMenu.setEnabled(  true,  true,  true,  true,  true, false,  true, false, false, false ); break; }
                                         case DPF_IGNORADOS_EN_FUENTE: {  myTreePopupMenu.setEnabled(  true,  true,  true,  true,  true, false,  true, false, false, false ); break; }
@@ -589,7 +709,7 @@ public class DirProcessFrame extends JFrame implements TreeSelectionListener, Mo
      * @param bytesNuevoFic	Bytes del fichero que se añade (para estadística)
      */
     // private int contFicheros = 0;
-    public void nuevoFichero( String nomFic, DPFTipoArbol tipoArbol, long bytesNuevoFic ) {
+    public void nuevoFichero( String nomFic, DPFTipoArbol tipoArbol, long bytesNuevoFic, String... ficheroFuenteOpcional ) {
         // getAccess( "nuevoFic " + tipoArbol.toString() );
         numNodos[tipoArbol.ordinal()]++;
         bytesTotales[tipoArbol.ordinal()] += bytesNuevoFic;
@@ -608,15 +728,32 @@ public class DirProcessFrame extends JFrame implements TreeSelectionListener, Mo
                 crearOBuscarDir( path, tipoArbol );
             }
             if (!existeFicheroEnUltimoAccedido( nombre, tipoArbol )) {
-                DefaultMutableTreeNode nuevoFic = new DefaultMutableTreeNode( nombre );
-                DefaultTreeModel tm = (DefaultTreeModel) arbol[tipoArbol.ordinal()].getModel();
-                tm.insertNodeInto( nuevoFic, ultimoDir[tipoArbol.ordinal()], ultimoDir[tipoArbol.ordinal()].getChildCount() );
-                if (mostrarExpandido[tipoArbol.ordinal()]) refrescaArbol( arbol[tipoArbol.ordinal()], raiz[tipoArbol.ordinal()], new TreePath(nuevoFic.getPath()) /* ultimoDirPath[tipoArbol.ordinal()] */ );  // Expandir visualmente
-                // ultimoDir[tipoArbol.ordinal()].add( nuevoFic ); -- Modo incorrecto de insertar (hay que hacerlo en el modelo)
+            	if (ficheroFuenteOpcional.length>0) {  // Caso especial : en árbol de copia se guarda el fichero fuente (para poder reintentar)
+	                DefaultMutableTreeNode nuevoFic = new DefaultMutableTreeNodeCopia( nombre, ficheroFuenteOpcional[0] );
+	                DefaultTreeModel tm = (DefaultTreeModel) arbol[tipoArbol.ordinal()].getModel();
+	                tm.insertNodeInto( nuevoFic, ultimoDir[tipoArbol.ordinal()], ultimoDir[tipoArbol.ordinal()].getChildCount() );
+	                if (mostrarExpandido[tipoArbol.ordinal()]) refrescaArbol( arbol[tipoArbol.ordinal()], raiz[tipoArbol.ordinal()], new TreePath(nuevoFic.getPath()) /* ultimoDirPath[tipoArbol.ordinal()] */ );  // Expandir visualmente
+	                // ultimoDir[tipoArbol.ordinal()].add( nuevoFic ); -- Modo incorrecto de insertar (hay que hacerlo en el modelo)
+            	} else {
+	                DefaultMutableTreeNode nuevoFic = new DefaultMutableTreeNode( nombre );
+	                DefaultTreeModel tm = (DefaultTreeModel) arbol[tipoArbol.ordinal()].getModel();
+	                tm.insertNodeInto( nuevoFic, ultimoDir[tipoArbol.ordinal()], ultimoDir[tipoArbol.ordinal()].getChildCount() );
+	                if (mostrarExpandido[tipoArbol.ordinal()]) refrescaArbol( arbol[tipoArbol.ordinal()], raiz[tipoArbol.ordinal()], new TreePath(nuevoFic.getPath()) /* ultimoDirPath[tipoArbol.ordinal()] */ );  // Expandir visualmente
+	                // ultimoDir[tipoArbol.ordinal()].add( nuevoFic ); -- Modo incorrecto de insertar (hay que hacerlo en el modelo)
+            	}
             }
         }
     }    
-
+    
+	    @SuppressWarnings("serial")
+		private static class DefaultMutableTreeNodeCopia extends DefaultMutableTreeNode {
+	    	public String ficheroFuente;
+	    	public DefaultMutableTreeNodeCopia( Object userNode, String ficheroFuente ) {
+	    		super( userNode );
+	    		this.ficheroFuente = ficheroFuente;
+	    	}
+	    }
+	
         // If expand is true, expands all nodes in the tree.
         // Otherwise, collapses all nodes in the tree.
         // * ATENCION!  Después de expandir, hay que recalcular los datos porque no se actualiza ningún cambio
@@ -629,7 +766,7 @@ public class DirProcessFrame extends JFrame implements TreeSelectionListener, Mo
             // Traverse children
             TreeNode node = (TreeNode)parent.getLastPathComponent();
             if (node.getChildCount() >= 0) {
-                for (Enumeration e=node.children(); e.hasMoreElements(); ) {
+                for (Enumeration<?> e=node.children(); e.hasMoreElements(); ) {
                     TreeNode n = (TreeNode)e.nextElement();
                     TreePath path = parent.pathByAddingChild(n);
                     expandAll(tree, path, expand);
@@ -811,7 +948,6 @@ System.out.println( "2");
         }
     }
 
-    static private DateFormat formatoHoras = new SimpleDateFormat( "hh:MM:ss" );
     /** Pone el indicador de progreso en la ventana
      * @param deCeroAMil    valor de 0 (0%) a 10000 (100%)
      */
@@ -911,8 +1047,11 @@ System.out.println( "2");
         InitUINimbus() {
             try {
                 UIManager.setLookAndFeel( "com.sun.java.swing.plaf.nimbus.NimbusLookAndFeel" );
-                //UIManager.setLookAndFeel("javax.swing.plaf.metal.MetalLookAndFeel");
-            } catch (Exception ex) { ex.printStackTrace(); }
+            } catch (Exception ex) { 
+                try {
+                    UIManager.setLookAndFeel( "javax.swing.plaf.nimbus.NimbusLookAndFeel" );
+                } catch (Exception ex2) { ex2.printStackTrace(); }
+            }
         }
     }
 

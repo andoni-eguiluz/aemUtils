@@ -61,6 +61,24 @@ public class IUConsola {
 		if (ventana!=null) ventana.dispose();
 	}
 
+	/** Trae la ventana de consola al frente
+	 */
+	public static void bringToFront() {
+		if (ventana!=null) ventana.toFront();
+	}
+
+	/** Borra el área de texto de la salida out (izquierda)
+	 */
+	public static void clearOutput() {
+		taOut.setText( "" );
+	}
+
+	/** Borra el área de texto de la salida error (derecha)
+	 */
+	public static void clearError() {
+		taErr.setText( "" );
+	}
+
 	/** Main de prueba
 	 * @param args
 	 */
