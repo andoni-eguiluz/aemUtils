@@ -9,6 +9,7 @@ import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.Serializable;
 import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -17,6 +18,7 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
 import java.util.TreeMap;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
@@ -344,7 +346,7 @@ public class DirProcess {
     		if (item==null) return;
     		item.nuevoEnMapa = false;
     		if (item instanceof ItemDirectorio) {
-    			for (ItemArchivo i : ((ItemDirectorio)item).contenido.values()) {
+    			for (ItemArchivo i : ((ItemDirectorio)item).getContenido()) {
     				quitaInfoNuevo( i );
     			}
     		}
@@ -382,16 +384,17 @@ public class DirProcess {
 		}
 	}
 
-    // Borra fic en mapeo si está en el mapeo destino
-	private static void borraFicEnMapeo( String pathAbsoluto ) {
+    // Borra fic en mapeo si está en el mapeo destino - true si lo borra
+	private static boolean borraFicEnMapeo( String pathAbsoluto ) {
 		ItemArchivo item = buscaFicEnMapeo( pathAbsoluto, true );
 		if (item!=null && item instanceof ItemDirectorio) {
 			int barra = pathAbsoluto.lastIndexOf( "/" );
 			if (barra==-1) barra = pathAbsoluto.lastIndexOf( "\\" );
 			if (barra!=-1) {
-				((ItemDirectorio)item).removeItem( pathAbsoluto.substring( barra+1 ) );
+				return ((ItemDirectorio)item).removeItem( pathAbsoluto.substring( barra+1 ) );
 			}
 		}
+		return false;
 	}
 	
 	public static ItemArchivo buscaFicEnMapeo( String pathAbsoluto, boolean buscaPadre ) {
@@ -662,29 +665,7 @@ public class DirProcess {
                     }
                     // Fin de mapeo
                     if (usaMapeoDestinoGuardado && directorioDestinoActual!=null) {
-
-                    	
-                    	
-                    	
-                    	
-                    	
-                    	
-                    	
-                    	
-                    	
-                    	
-                    	
-                    	
-                    	
-                    	
-                    	
-                    	
-                    	
-                    	
-                    	
-                    	
-                    	// TODO quitar
-                    	directorioDestinoActual.volcarEnConsola();
+                    	// directorioDestinoActual.volcarEnConsola();
                     	guardaMapeoDestino( dirDestino.getAbsolutePath() );
                     }
                     Debug.show( "Proceso syncAllDirsAndFiles finalizado." );
@@ -797,7 +778,8 @@ public class DirProcess {
 
         private static String genVersionFileName( String fileName, int verNumber ) {
             int punto = fileName.lastIndexOf('.');
-            if (punto < 0) punto = fileName.length();
+            int barra = Math.max( fileName.lastIndexOf("/"), fileName.lastIndexOf("\\"));
+            if (punto < 0 || barra>punto) punto = fileName.length();  // El fichero no tiene extensión
             if (verNumber <= 9999)
                 return fileName.substring(0,punto) + "_VER_" + String.format("%1$04d", verNumber) + fileName.substring(punto);
             else
@@ -869,7 +851,8 @@ public class DirProcess {
                     if (usaMapeoDestinoGuardado && ficDestinoMapeo!=null && ficDestinoMapeo instanceof ItemDirectorio && !ficDestinoMapeo.nuevoEnMapa) {
                         int i = 0;
                         int numHijos = ((ItemDirectorio)ficDestinoMapeo).contenido.size();
-                    	for (ItemArchivo item : ((ItemDirectorio)ficDestinoMapeo).contenido.values()) {
+                        
+                    	for (ItemArchivo item : ((ItemDirectorio)ficDestinoMapeo).getContenido()) {
                             syncAllDirsAndFilesRec( null, new File(destino,item.nombre), "", pathRelD+"/"+item.nombre, tipoDeCopia, dirRespaldo, consoleFeedback, porcAcumuladoPrevio+porcAProcesarEnEstaLlamada*i/numHijos, porcAProcesarEnEstaLlamada/numHijos, item );
                             i++;
                     	}
@@ -957,9 +940,32 @@ public class DirProcess {
                         		}
                         	}
                         } else {  // Error en movimiento
-                            inform( " ERROR de respaldo. Fichero de destino ya borrado no se ha podido mover a " + DELETED_FILES + ": ", destino, destino, DPFTipoArbol.DPF_SOLO_EN_DESTINO );
-                            inform( "", destino, destino, DPFTipoArbol.DPF_ERRORES_COPIA );
-                            erroresRespaldados++;
+                        	if (destino.exists()) {  // Error en el respaldo
+                        		// Probar si es que el tipo de disco no soporta renombrado entre carpetas
+                        		try {
+                        			Files.copy( destino.toPath(), backupFile.toPath() );
+                        			destino.delete();
+                                    inform( "  Respaldo. Fichero de destino ya borrado. Movido a " + DELETED_FILES + ": ", destino, destino, DPFTipoArbol.DPF_SOLO_EN_DESTINO );
+                                    ficherosRespaldados++;
+                                    ficherosBorrados++;
+                                	if (usaMapeoDestinoGuardado && ficDestinoMapeo!=null && ficDestinoMapeo instanceof ItemFichero) {
+                                		if (ficDestinoMapeo.padre!=null) {
+                                			ficDestinoMapeo.padre.removeItem( ficDestinoMapeo.nombre );
+                                		}
+                                	}
+                        		} catch (Exception e) {
+	                                inform( " ERROR de respaldo. Fichero de destino ya borrado no se ha podido mover a " + DELETED_FILES + ": ", destino, destino, DPFTipoArbol.DPF_SOLO_EN_DESTINO );
+	                                inform( "", destino, destino, DPFTipoArbol.DPF_ERRORES_COPIA );
+	                                erroresRespaldados++;
+                        		}
+                        	} else {  // El fichero ha dejado de existir - quizás porque estaba en el mapa pero no físicamente - quitarlo
+                        		boolean borradoMapeo = borraFicEnMapeo( destino.getAbsolutePath() );
+                        		if (borradoMapeo) {
+                                    inform( " ERROR de respaldo previo. Fichero de destino estaba en mapeo pero ya no está en carpeta destino. Ignorado: " + destino.getAbsolutePath(), destino, destino );
+                        		} else {
+                                    inform( " ERROR de respaldo. Fichero de destino estaba en carpeta destino pero ha desaparecido en el proceso. Ignorado: " + destino.getAbsolutePath(), destino, destino );
+                        		}
+                        	}
                         }
                     }
                 }
@@ -975,7 +981,7 @@ public class DirProcess {
                 String[] children = fuente.list();
                 if (children == null) children = new String[0];
                 if (usaMapeoDestinoGuardado && ficDestinoMapeo!=null && ficDestinoMapeo instanceof ItemDirectorio && !ficDestinoMapeo.nuevoEnMapa) {
-                	List<ItemArchivo> childrenDest = new ArrayList<ItemArchivo>( ((ItemDirectorio)ficDestinoMapeo).contenido.values() );
+                	List<ItemArchivo> childrenDest = new ArrayList<ItemArchivo>( ((ItemDirectorio)ficDestinoMapeo).getContenido() );
 	                Arrays.sort( children, String.CASE_INSENSITIVE_ORDER );
 	                Collections.sort( childrenDest, new Comparator<ItemArchivo>() {
 						@Override
@@ -1314,10 +1320,12 @@ public class DirProcess {
                     if (DPFTipoArbol.sonDeFuente[ tipoArbol.ordinal() ]) {
                         windowForFeedback.nuevoFichero( fuente.getAbsolutePath(), tipoArbol, fuente.length() );
                     } else {
-                    	if (tipoArbol==DPFTipoArbol.DPF_ERRORES_COPIA) {
-                    		windowForFeedback.nuevoFichero( destino.getAbsolutePath(), tipoArbol, destino.length(), fuente.getAbsolutePath() );  // Si es de error se almacena el fichero fuente, para poder reintentar luego
-                    	} else {
-                    		windowForFeedback.nuevoFichero( destino.getAbsolutePath(), tipoArbol, destino.length() );
+                    	if (destino!=null) {
+                        	if (tipoArbol==DPFTipoArbol.DPF_ERRORES_COPIA) {
+                        		windowForFeedback.nuevoFichero( destino.getAbsolutePath(), tipoArbol, destino.length(), fuente.getAbsolutePath() );  // Si es de error se almacena el fichero fuente, para poder reintentar luego
+                        	} else {
+                        		windowForFeedback.nuevoFichero( destino.getAbsolutePath(), tipoArbol, destino==null ? 0 : destino.length() );
+                        	}
                     	}
                     }
                 }
@@ -1514,17 +1522,20 @@ public class DirProcess {
     
     private static class ItemDirectorio extends ItemArchivo {
 		private static final long serialVersionUID = 1L;
-    	TreeMap<String,ItemArchivo> contenido;
+    	Map<String,ItemArchivo> contenido;
     	public ItemDirectorio( String nombre ) {
     		super( nombre );
-    		contenido = new TreeMap<>();
+    		contenido = new TreeMap<String,ItemArchivo>();
     	}
     	public ItemDirectorio( String nombre, ItemDirectorio dirPadre ) {
     		super( nombre, dirPadre );
-    		contenido = new TreeMap<>();
+    		contenido = new TreeMap<String,ItemArchivo>();
     	}
+    	/** Devuelve una COPIA de los items contenidos en el directorio (para evitar errores de concurrencia al recorrerlos)
+    	 * @return	copia de los items contenidos en el directorio
+    	 */
     	public Collection<ItemArchivo> getContenido() {
-    		return contenido.values();
+    		return new ArrayList<ItemArchivo>( contenido.values() );
     	}
     	/** Devuelve un item de archivo dentro del directorio
     	 * @param nombre	Nombre del item a buscar
@@ -1543,9 +1554,10 @@ public class DirProcess {
     	}
     	/** Elimina un archivo del directorio
     	 * @param nombre	Nombre del archivo a eliminar
+    	 * @return	true si lo ha quitado, false si no estaba
     	 */
-    	public void removeItem( String nombre ) {
-    		contenido.remove( nombre );
+    	public boolean removeItem( String nombre ) {
+    		return (contenido.remove( nombre ) != null);
     	}
     	protected void volcarEnConsolaRec() {
     		System.out.println( getNivel() + nombre );

@@ -14,7 +14,7 @@ public class IUConsola {
 	
 	private static MiJTextArea taOut = new MiJTextArea( 800 );  // Textarea para el out
 	private static MiJTextArea taErr = new MiJTextArea( 800 );  // Textarea para el err
-	private static VentanaIUConsola ventana;  // Ventana para las textareas
+	public static VentanaIUConsola ventana;  // Ventana para las textareas
 
 		private static Runnable rLanzarIU = new Runnable() {
 			@Override
@@ -79,6 +79,22 @@ public class IUConsola {
 		taErr.setText( "" );
 	}
 
+	/** Oculta el panel de error y deja solo la de salida
+	 */
+	public static void ocultaPanelError() {
+		ventana.getContentPane().removeAll();
+		ventana.setContentPane( new JPanel( new BorderLayout() ) );
+		ventana.getContentPane().add( new JScrollPane( taOut ), BorderLayout.CENTER );
+		ventana.revalidate();
+	}
+
+	/** Cambia el título de la ventana
+	 * @param titulo	Nuevo título
+	 */
+	public static void cambiaTituloVentana( String titulo ) {
+		ventana.setTitle( titulo );
+	}
+
 	/** Main de prueba
 	 * @param args
 	 */
@@ -102,12 +118,13 @@ public class IUConsola {
 	}
 	
 	@SuppressWarnings("serial")
-	private static class VentanaIUConsola extends JFrame {
+	public static class VentanaIUConsola extends JFrame {
 		public VentanaIUConsola() {
 			setTitle( "Consola de Java" );
 			setDefaultCloseOperation( JFrame.DISPOSE_ON_CLOSE );
 			JSplitPane p = new JSplitPane();
-			setContentPane( p );
+			add( p, BorderLayout.CENTER );
+			// setContentPane( p );
 			p.setLeftComponent( new JScrollPane( taOut ) );
 			p.setRightComponent( new JScrollPane( taErr ) );
 			p.setDividerLocation( 0.5 );

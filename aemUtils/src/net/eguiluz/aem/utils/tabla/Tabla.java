@@ -298,10 +298,26 @@ public class Tabla {
 	 * @param row	Número de fila
 	 * @param ncol	Nombre exacto de columna
 	 * @return	Dato de ese valor
+	 * @throws IndexOutOfBoundsException	Si no existe el nombre de columna o la fila
 	 */
-	public String get( int row, String ncol ) {
+	public String get( int row, String ncol ) throws IndexOutOfBoundsException {
 		int col = getColumnWithHeader( ncol, true );
 		return get( row, col );
+	}
+	
+	/** Devuelve un valor de dato de la tabla
+	 * @param row	Número de fila
+	 * @param ncol	Nombre exacto de columna
+	 * @param retSiError	Valor que se devuelve si hay un error en la columna o la fila
+	 * @return	Dato de ese valor
+	 */
+	public String get( int row, String ncol, String retSiError ) {
+		try {
+			int col = getColumnWithHeader( ncol, true );
+			return get( row, col );
+		} catch (IndexOutOfBoundsException e) {
+			return retSiError;
+		}
 	}
 	
 	/** Devuelve un valor de dato de la tabla en forma de entero

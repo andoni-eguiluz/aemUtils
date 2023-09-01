@@ -17,12 +17,13 @@ import javax.swing.text.JTextComponent;
 @SuppressWarnings("serial")
 public class VentanaEdicionGenericaConfig  extends JDialog {
 
-	private ArrayList<JTextComponent> tfPropiedad = new ArrayList<JTextComponent>();
+	private ArrayList<JTextComponent> listaTfPropiedad = new ArrayList<JTextComponent>();
 	private ArrayList<String> propiedad = new ArrayList<String>();
 	private ArrayList<String> valorDefecto = new ArrayList<String>();
 	private String nomFic;
 	private Properties misProps = null;
 	private boolean hayCambios = false;
+	private ArrayList<EventoCambio> listaEventos = new ArrayList<>();
 	
 	/** Construye un diálogo con definición particular de configuración de propiedades. 
 	 * Además se pueden añadir otras propiedades, que no serán editadas de forma interactiva en la ventana, pero que sí se pueden cambiar, guardar y consultar
@@ -73,6 +74,16 @@ public class VentanaEdicionGenericaConfig  extends JDialog {
 								else hayCambios = true;
 							}
 						});
+						tf.addFocusListener( new FocusAdapter() {
+							@Override
+							public void focusLost(FocusEvent e) {
+								if (hayCambios && !tf.getText().equals( misProps.getProperty( propiedad.get( listaTfPropiedad.indexOf( tf ) ) ) ) ) {
+									for (EventoCambio ec : listaEventos) {
+										ec.hayCambio( propiedad.get( listaTfPropiedad.indexOf( tf ) ), tf.getText() );
+									}
+								}
+							}
+						});
 					} else if (tipos[i]==null || tipos[i].equals("") || tipos[i].startsWith("L")) {  // TextField normal
 						int cols = 20;
 						if (tipos[i]!=null && tipos[i].startsWith("L"))
@@ -85,6 +96,16 @@ public class VentanaEdicionGenericaConfig  extends JDialog {
 							@Override
 							public void keyTyped(KeyEvent e) {
 								hayCambios = true;
+							}
+						});
+						tf.addFocusListener( new FocusAdapter() {
+							@Override
+							public void focusLost(FocusEvent e) {
+								if (hayCambios && !tf.getText().equals( misProps.getProperty( propiedad.get( listaTfPropiedad.indexOf( tf ) ) ) ) ) {
+									for (EventoCambio ec : listaEventos) {
+										ec.hayCambio( propiedad.get( listaTfPropiedad.indexOf( tf ) ), tf.getText() );
+									}
+								}
 							}
 						});
 					} else {
@@ -101,7 +122,7 @@ public class VentanaEdicionGenericaConfig  extends JDialog {
 						}
 						panel1.add(btn);
 					}
-					tfPropiedad.add( tf );
+					listaTfPropiedad.add( tf );
 				hayMasTF = (i<mensajes.length-1 && mensajes[i+1]==null);
 				if (hayMasTF) {
 					i++;
@@ -164,13 +185,22 @@ public class VentanaEdicionGenericaConfig  extends JDialog {
 		}
 
 
+	// Eventos de cambio
+	public static interface EventoCambio {
+		public void hayCambio( String propiedadCambiada, String valorNuevo );
+	}
+	
+	public void addEventoDeCambioInteractivo( EventoCambio evento ) {
+		listaEventos.add( evento );
+	}
+		
 	// Guarda los cambios en el fichero de configuración
 		private boolean aceptar = false;
 	private void botonAceptar() {
 		aceptar = true;
 		if (hayCambios) {
 			for (int i=0; i < propiedad.size(); i++) {
-				misProps.setProperty( propiedad.get(i), tfPropiedad.get(i).getText() );
+				misProps.setProperty( propiedad.get(i), listaTfPropiedad.get(i).getText() );
 			}
 			saveProps();
 		}
@@ -212,8 +242,14 @@ public class VentanaEdicionGenericaConfig  extends JDialog {
 			}
 			int valor = fc.showDialog( VentanaEdicionGenericaConfig .this, mens );
 			if (valor == JFileChooser.APPROVE_OPTION) {
+				boolean avisoDeCambio = (!tf.getText().replaceAll("/", "\\\\").equalsIgnoreCase( fc.getSelectedFile().getPath().replaceAll("/", "\\\\") ) );
 				tf.setText( fc.getSelectedFile().getPath() );
 				hayCambios = true;
+				if (avisoDeCambio) {
+					for (EventoCambio ec : listaEventos) {
+						ec.hayCambio( propiedad.get( listaTfPropiedad.indexOf( tf ) ), tf.getText() );
+					}
+				}
 			}
 		}
 	}
@@ -356,9 +392,24 @@ public class VentanaEdicionGenericaConfig  extends JDialog {
 		refrescaPropsVentana();
 	}
 	
-	private void refrescaPropsVentana() {
+	/** Refresca explícitamente los valores de propiedad actual en la ventana de edición de propiedades
+	 * (adecuado si se cambia programáticamente algún valor mientras la ventana está activa)
+	 */
+	public void refrescaPropsVentana() {
 		for (int i=0; i < propiedad.size(); i++) {
-			tfPropiedad.get(i).setText( misProps.getProperty( propiedad.get(i) ));
+			listaTfPropiedad.get(i).setText( misProps.getProperty( propiedad.get(i) ));
+		}
+	}
+	
+	/** Refresca explícitamente el valor de propiedad actual en la ventana de edición de propiedades
+	 * (adecuado si se cambia programáticamente algún valor mientras la ventana está activa)
+	 * @param propARefrescar	Propiedad a refrescar (solo se refresca esa)
+	 */
+	public void refrescaPropsVentana( String propARefrescar ) {
+		for (int i=0; i < propiedad.size(); i++) {
+			if (propiedad.get(i).equals(propARefrescar)) {
+				listaTfPropiedad.get(i).setText( misProps.getProperty( propiedad.get(i) ));
+			}
 		}
 	}
 	
